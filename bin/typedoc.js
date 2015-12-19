@@ -3789,13 +3789,7 @@ var td;
             if (!name) {
                 if (!node.symbol)
                     return null;
-                // Get name (even of default export)
-                if (node.localSymbol) {
-                    name = node.localSymbol.name;
-                }
-                else {
-                    name = node.symbol.name;
-                }
+                name = node.symbol.name;
             }
             // Test whether the node is exported
             var isExported;
@@ -4757,6 +4751,124 @@ var td;
     var converter;
     (function (converter_7) {
         /**
+         * This plugin allows an ES6 module to specify its TypeDoc name.
+         * It also allows multiple ES6 modules to be merged together into a single TypeDoc module.
+         *
+         * @usage
+         * At the top of an ES6 module, add a "dynamic module comment".  Insert "@module typedocModuleName" to
+         * specify that this ES6 module should be merged with module: "typedocModuleName".
+         *
+         * Similar to the [[DynamicModulePlugin]], ensure that there is a comment tag (even blank) for the
+         * first symbol in the file.
+         *
+         * @example
+         * ```
+         *
+         * &#47;**
+         *  * @module newModuleName
+         *  *&#47;
+         * &#47;** for typedoc &#47;
+         * import {foo} from "../foo";
+         * export let bar = "bar";
+         * ```
+         *
+         * Also similar to [[DynamicModulePlugin]], if @preferred is found in a dynamic module comment, the comment
+         * will be used as the module comment, and documentation will be generated from it (note: this plugin does not
+         * attempt to count lengths of merged module comments in order to guess the best one)
+         */
+        var ModuleAnnotationPlugin = (function (_super) {
+            __extends(ModuleAnnotationPlugin, _super);
+            function ModuleAnnotationPlugin(converter) {
+                _super.call(this, converter);
+                converter.on(converter_7.Converter.EVENT_BEGIN, this.onBegin, this);
+                converter.on(converter_7.Converter.EVENT_CREATE_DECLARATION, this.onDeclaration, this);
+                converter.on(converter_7.Converter.EVENT_RESOLVE_BEGIN, this.onBeginResolve, this);
+            }
+            /**
+             * Triggered when the converter begins converting a project.
+             *
+             * @param context  The context object describing the current state the converter is in.
+             */
+            ModuleAnnotationPlugin.prototype.onBegin = function (context) {
+                this.moduleRenames = [];
+            };
+            /**
+             * Triggered when the converter has created a declaration reflection.
+             *
+             * @param context  The context object describing the current state the converter is in.
+             * @param reflection  The reflection that is currently processed.
+             * @param node  The node that is currently processed if available.
+             */
+            ModuleAnnotationPlugin.prototype.onDeclaration = function (context, reflection, node) {
+                if (reflection.kindOf(td.models.ReflectionKind.ExternalModule)) {
+                    var comment = converter_7.CommentPlugin.getComment(node);
+                    // Look for @module
+                    var match = /@module\s+(\w+)/.exec(comment);
+                    if (match) {
+                        // Look for @preferred
+                        var preferred = /@preferred/.exec(comment);
+                        // Set up a list of renames operations to perform when the resolve phase starts
+                        this.moduleRenames.push({
+                            renameTo: match[1],
+                            preferred: preferred != null,
+                            reflection: reflection
+                        });
+                    }
+                }
+            };
+            /**
+             * Triggered when the converter begins resolving a project.
+             *
+             * @param context  The context object describing the current state the converter is in.
+             */
+            ModuleAnnotationPlugin.prototype.onBeginResolve = function (context) {
+                var projRefs = context.project.reflections;
+                var refsArray = Object.keys(projRefs).reduce(function (m, k) { m.push(projRefs[k]); return m; }, []);
+                // Process each rename
+                this.moduleRenames.forEach(function (item) {
+                    var renaming = item.reflection;
+                    // Find an existing module that already has the "rename to" name.  Use it as the merge target.
+                    var mergeTarget = refsArray.filter(function (ref) { return ref.kind === renaming.kind && ref.name === item.renameTo; })[0];
+                    // If there wasn't a merge target, just change the name of the current module and exit.
+                    if (!mergeTarget) {
+                        renaming.name = item.renameTo;
+                        return;
+                    }
+                    // Since there is a merge target, relocate all the renaming module's children to the mergeTarget.
+                    var childrenOfRenamed = refsArray.filter(function (ref) { return ref.parent === renaming; });
+                    childrenOfRenamed.forEach(function (ref) {
+                        // update links in both directions
+                        ref.parent = mergeTarget;
+                        mergeTarget.children.push(ref);
+                    });
+                    // If @preferred was found on the current item, update the mergeTarget's comment
+                    // with comment from the renaming module
+                    if (item.preferred)
+                        mergeTarget.comment = renaming.comment;
+                    // Now that all the children have been relocated to the mergeTarget, delete the empty module
+                    // Make sure the module being renamed doesn't have children, or they will be deleted
+                    if (renaming.children)
+                        renaming.children.length = 0;
+                    converter_7.CommentPlugin.removeReflection(context.project, renaming);
+                    // Remove @module and @preferred from the comment, if found.
+                    converter_7.CommentPlugin.removeTags(mergeTarget.comment, "module");
+                    converter_7.CommentPlugin.removeTags(mergeTarget.comment, "preferred");
+                });
+            };
+            return ModuleAnnotationPlugin;
+        })(converter_7.ConverterPlugin);
+        converter_7.ModuleAnnotationPlugin = ModuleAnnotationPlugin;
+        /**
+         * Register this handler.
+         */
+        converter_7.Converter.registerPlugin('moduleAnnotation', ModuleAnnotationPlugin);
+    })(converter = td.converter || (td.converter = {}));
+})(td || (td = {}));
+var td;
+(function (td) {
+    var converter;
+    (function (converter_8) {
+        /**
          * Stores data of a repository.
          */
         var Repository = (function () {
@@ -4796,7 +4908,7 @@ var td;
                 if (out.code == 0) {
                     out.output.split('\n').forEach(function (file) {
                         if (file != '') {
-                            _this.files.push(converter_7.BasePath.normalize(path + '/' + file));
+                            _this.files.push(converter_8.BasePath.normalize(path + '/' + file));
                         }
                     });
                 }
@@ -4850,7 +4962,7 @@ var td;
                 td.ShellJS.popd();
                 if (out.code != 0)
                     return null;
-                return new Repository(converter_7.BasePath.normalize(out.output.replace("\n", '')));
+                return new Repository(converter_8.BasePath.normalize(out.output.replace("\n", '')));
             };
             return Repository;
         })();
@@ -4877,7 +4989,7 @@ var td;
                 this.ignoredPaths = [];
                 td.ShellJS.config.silent = true;
                 if (td.ShellJS.which('git')) {
-                    converter.on(converter_7.Converter.EVENT_RESOLVE_END, this.onEndResolve, this);
+                    converter.on(converter_8.Converter.EVENT_RESOLVE_END, this.onEndResolve, this);
                 }
             }
             /**
@@ -4940,18 +5052,18 @@ var td;
                 }
             };
             return GitHubPlugin;
-        })(converter_7.ConverterPlugin);
-        converter_7.GitHubPlugin = GitHubPlugin;
+        })(converter_8.ConverterPlugin);
+        converter_8.GitHubPlugin = GitHubPlugin;
         /**
          * Register this handler.
          */
-        converter_7.Converter.registerPlugin('gitHub', GitHubPlugin);
+        converter_8.Converter.registerPlugin('gitHub', GitHubPlugin);
     })(converter = td.converter || (td.converter = {}));
 })(td || (td = {}));
 var td;
 (function (td) {
     var converter;
-    (function (converter_8) {
+    (function (converter_9) {
         /**
          * A handler that sorts and groups the found reflections in the resolving phase.
          *
@@ -4966,8 +5078,8 @@ var td;
              */
             function GroupPlugin(converter) {
                 _super.call(this, converter);
-                converter.on(converter_8.Converter.EVENT_RESOLVE, this.onResolve, this);
-                converter.on(converter_8.Converter.EVENT_RESOLVE_END, this.onEndResolve, this);
+                converter.on(converter_9.Converter.EVENT_RESOLVE, this.onResolve, this);
+                converter.on(converter_9.Converter.EVENT_RESOLVE_END, this.onEndResolve, this);
             }
             /**
              * Triggered when the converter resolves a reflection.
@@ -5162,18 +5274,18 @@ var td;
                 return plurals;
             })();
             return GroupPlugin;
-        })(converter_8.ConverterPlugin);
-        converter_8.GroupPlugin = GroupPlugin;
+        })(converter_9.ConverterPlugin);
+        converter_9.GroupPlugin = GroupPlugin;
         /**
          * Register this handler.
          */
-        converter_8.Converter.registerPlugin('group', GroupPlugin);
+        converter_9.Converter.registerPlugin('group', GroupPlugin);
     })(converter = td.converter || (td.converter = {}));
 })(td || (td = {}));
 var td;
 (function (td) {
     var converter;
-    (function (converter_9) {
+    (function (converter_10) {
         /**
          * A plugin that detects interface implementations of functions and
          * properties on classes and links them.
@@ -5187,7 +5299,7 @@ var td;
              */
             function ImplementsPlugin(converter) {
                 _super.call(this, converter);
-                converter.on(converter_9.Converter.EVENT_RESOLVE, this.onResolve, this, -10);
+                converter.on(converter_10.Converter.EVENT_RESOLVE, this.onResolve, this, -10);
             }
             /**
              * Mark all members of the given class to be the implementation of the matching interface member.
@@ -5274,18 +5386,18 @@ var td;
                 }
             };
             return ImplementsPlugin;
-        })(converter_9.ConverterPlugin);
-        converter_9.ImplementsPlugin = ImplementsPlugin;
+        })(converter_10.ConverterPlugin);
+        converter_10.ImplementsPlugin = ImplementsPlugin;
         /**
          * Register this handler.
          */
-        converter_9.Converter.registerPlugin('implements', ImplementsPlugin);
+        converter_10.Converter.registerPlugin('implements', ImplementsPlugin);
     })(converter = td.converter || (td.converter = {}));
 })(td || (td = {}));
 var td;
 (function (td) {
     var converter;
-    (function (converter_10) {
+    (function (converter_11) {
         /**
          * A handler that tries to find the package.json and readme.md files of the
          * current project.
@@ -5303,9 +5415,9 @@ var td;
              */
             function PackagePlugin(converter) {
                 _super.call(this, converter);
-                converter.on(converter_10.Converter.EVENT_BEGIN, this.onBegin, this);
-                converter.on(converter_10.Converter.EVENT_FILE_BEGIN, this.onBeginDocument, this);
-                converter.on(converter_10.Converter.EVENT_RESOLVE_BEGIN, this.onBeginResolve, this);
+                converter.on(converter_11.Converter.EVENT_BEGIN, this.onBegin, this);
+                converter.on(converter_11.Converter.EVENT_FILE_BEGIN, this.onBeginDocument, this);
+                converter.on(converter_11.Converter.EVENT_RESOLVE_BEGIN, this.onBeginResolve, this);
             }
             PackagePlugin.prototype.getParameters = function () {
                 return [{
@@ -5383,18 +5495,18 @@ var td;
                 }
             };
             return PackagePlugin;
-        })(converter_10.ConverterPlugin);
-        converter_10.PackagePlugin = PackagePlugin;
+        })(converter_11.ConverterPlugin);
+        converter_11.PackagePlugin = PackagePlugin;
         /**
          * Register this handler.
          */
-        converter_10.Converter.registerPlugin('package', PackagePlugin);
+        converter_11.Converter.registerPlugin('package', PackagePlugin);
     })(converter = td.converter || (td.converter = {}));
 })(td || (td = {}));
 var td;
 (function (td) {
     var converter;
-    (function (converter_11) {
+    (function (converter_12) {
         /**
          * A handler that attaches source file information to reflections.
          */
@@ -5410,18 +5522,18 @@ var td;
                 /**
                  * Helper for resolving the base path of all source files.
                  */
-                this.basePath = new converter_11.BasePath();
+                this.basePath = new converter_12.BasePath();
                 /**
                  * A map of all generated [[SourceFile]] instances.
                  */
                 this.fileMappings = {};
-                converter.on(converter_11.Converter.EVENT_BEGIN, this.onBegin, this);
-                converter.on(converter_11.Converter.EVENT_FILE_BEGIN, this.onBeginDocument, this);
-                converter.on(converter_11.Converter.EVENT_CREATE_DECLARATION, this.onDeclaration, this);
-                converter.on(converter_11.Converter.EVENT_CREATE_SIGNATURE, this.onDeclaration, this);
-                converter.on(converter_11.Converter.EVENT_RESOLVE_BEGIN, this.onBeginResolve, this);
-                converter.on(converter_11.Converter.EVENT_RESOLVE, this.onResolve, this);
-                converter.on(converter_11.Converter.EVENT_RESOLVE_END, this.onEndResolve, this);
+                converter.on(converter_12.Converter.EVENT_BEGIN, this.onBegin, this);
+                converter.on(converter_12.Converter.EVENT_FILE_BEGIN, this.onBeginDocument, this);
+                converter.on(converter_12.Converter.EVENT_CREATE_DECLARATION, this.onDeclaration, this);
+                converter.on(converter_12.Converter.EVENT_CREATE_SIGNATURE, this.onDeclaration, this);
+                converter.on(converter_12.Converter.EVENT_RESOLVE_BEGIN, this.onBeginResolve, this);
+                converter.on(converter_12.Converter.EVENT_RESOLVE, this.onResolve, this);
+                converter.on(converter_12.Converter.EVENT_RESOLVE_END, this.onEndResolve, this);
             }
             SourcePlugin.prototype.getSourceFile = function (fileName, project) {
                 if (!this.fileMappings[fileName]) {
@@ -5546,18 +5658,18 @@ var td;
                 });
             };
             return SourcePlugin;
-        })(converter_11.ConverterPlugin);
-        converter_11.SourcePlugin = SourcePlugin;
+        })(converter_12.ConverterPlugin);
+        converter_12.SourcePlugin = SourcePlugin;
         /**
          * Register this handler.
          */
-        converter_11.Converter.registerPlugin('source', SourcePlugin);
+        converter_12.Converter.registerPlugin('source', SourcePlugin);
     })(converter = td.converter || (td.converter = {}));
 })(td || (td = {}));
 var td;
 (function (td) {
     var converter;
-    (function (converter_12) {
+    (function (converter_13) {
         /**
          * A handler that converts all instances of [[LateResolvingType]] to their renderable equivalents.
          */
@@ -5571,8 +5683,8 @@ var td;
             function TypePlugin(converter) {
                 _super.call(this, converter);
                 this.reflections = [];
-                converter.on(converter_12.Converter.EVENT_RESOLVE, this.onResolve, this);
-                converter.on(converter_12.Converter.EVENT_RESOLVE_END, this.onResolveEnd, this);
+                converter.on(converter_13.Converter.EVENT_RESOLVE, this.onResolve, this);
+                converter.on(converter_13.Converter.EVENT_RESOLVE_END, this.onResolveEnd, this);
             }
             /**
              * Triggered when the converter resolves a reflection.
@@ -5700,12 +5812,12 @@ var td;
                 });
             };
             return TypePlugin;
-        })(converter_12.ConverterPlugin);
-        converter_12.TypePlugin = TypePlugin;
+        })(converter_13.ConverterPlugin);
+        converter_13.TypePlugin = TypePlugin;
         /**
          * Register this handler.
          */
-        converter_12.Converter.registerPlugin('type', TypePlugin);
+        converter_13.Converter.registerPlugin('type', TypePlugin);
     })(converter = td.converter || (td.converter = {}));
 })(td || (td = {}));
 var td;

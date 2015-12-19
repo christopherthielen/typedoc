@@ -1810,6 +1810,59 @@ declare module td.converter {
 }
 declare module td.converter {
     /**
+     * This plugin allows an ES6 module to specify its TypeDoc name.
+     * It also allows multiple ES6 modules to be merged together into a single TypeDoc module.
+     *
+     * @usage
+     * At the top of an ES6 module, add a "dynamic module comment".  Insert "@module typedocModuleName" to
+     * specify that this ES6 module should be merged with module: "typedocModuleName".
+     *
+     * Similar to the [[DynamicModulePlugin]], ensure that there is a comment tag (even blank) for the
+     * first symbol in the file.
+     *
+     * @example
+     * ```
+     *
+     * &#47;**
+     *  * @module newModuleName
+     *  *&#47;
+     * &#47;** for typedoc &#47;
+     * import {foo} from "../foo";
+     * export let bar = "bar";
+     * ```
+     *
+     * Also similar to [[DynamicModulePlugin]], if @preferred is found in a dynamic module comment, the comment
+     * will be used as the module comment, and documentation will be generated from it (note: this plugin does not
+     * attempt to count lengths of merged module comments in order to guess the best one)
+     */
+    class ModuleAnnotationPlugin extends ConverterPlugin {
+        /** List of module reflections which are models to rename */
+        private moduleRenames;
+        constructor(converter: Converter);
+        /**
+         * Triggered when the converter begins converting a project.
+         *
+         * @param context  The context object describing the current state the converter is in.
+         */
+        private onBegin(context);
+        /**
+         * Triggered when the converter has created a declaration reflection.
+         *
+         * @param context  The context object describing the current state the converter is in.
+         * @param reflection  The reflection that is currently processed.
+         * @param node  The node that is currently processed if available.
+         */
+        private onDeclaration(context, reflection, node?);
+        /**
+         * Triggered when the converter begins resolving a project.
+         *
+         * @param context  The context object describing the current state the converter is in.
+         */
+        private onBeginResolve(context);
+    }
+}
+declare module td.converter {
+    /**
      * A handler that watches for repositories with GitHub origin and links
      * their source files to the related GitHub pages.
      */
