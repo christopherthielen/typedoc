@@ -95,6 +95,10 @@ module td.converter
                     return;
                 }
 
+                if (!mergeTarget.children) {
+                    mergeTarget.children = [];
+                }
+
                 // Since there is a merge target, relocate all the renaming module's children to the mergeTarget.
                 let childrenOfRenamed = refsArray.filter(ref => ref.parent === renaming);
                 childrenOfRenamed.forEach((ref: models.Reflection) => {
